@@ -10,12 +10,16 @@ import asyncio
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Logging setup
 logging.basicConfig(level=logging.INFO)
 
 # Telegram Bot Token
-TOKEN = "7413982607:AAG09tBv0Pu2hJvetybPxi4WceSJnT4sJ9o"  # Replace with your actual token
+TOKEN = os.environ.get("BOT_TOKEN")  # Get token from environment variable
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 router = Router()
@@ -190,11 +194,11 @@ async def receive_category(message: Message, state: FSMContext):
         data = await state.get_data()
 
         if save_movie(
-                title=data['title'],
-                video_link=data['video_link'],
-                poster_file_id=data['poster_file_id'],
-                chat_id=message.from_user.id,
-                category_id=category_id
+            title=data['title'],
+            video_link=data['video_link'],
+            poster_file_id=data['poster_file_id'],
+            chat_id=message.from_user.id,
+            category_id=category_id
         ):
             await message.reply(
                 f"✅ Movie '{data['title']}' saved successfully as {category_name}!",
@@ -220,5 +224,5 @@ async def main():
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
-if __name__ != "__main__": # Add this if guard
+if __name__ == "__main__":
     asyncio.run(main())
