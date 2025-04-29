@@ -190,11 +190,11 @@ async def receive_category(message: Message, state: FSMContext):
         data = await state.get_data()
 
         if save_movie(
-            title=data['title'],
-            video_link=data['video_link'],
-            poster_file_id=data['poster_file_id'],
-            chat_id=message.from_user.id,
-            category_id=category_id
+                title=data['title'],
+                video_link=data['video_link'],
+                poster_file_id=data['poster_file_id'],
+                chat_id=message.from_user.id,
+                category_id=category_id
         ):
             await message.reply(
                 f"✅ Movie '{data['title']}' saved successfully as {category_name}!",
@@ -220,5 +220,5 @@ async def main():
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
-if __name__ == "__main__":
+if __name__ != "__main__": # Add this if guard
     asyncio.run(main())
