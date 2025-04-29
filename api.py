@@ -14,7 +14,7 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder="build", static_url_path="/")  # Updated to serve React app
 CORS(app)
 
 def get_db_connection():
@@ -241,6 +241,12 @@ def stream_video():
     except Exception as e:
         logger.error(f"Unexpected error in stream_video: {e}")
         return "Internal server error", 500
+
+
+@app.route("/<path:path>")
+@app.route("/<path:path>/")
+def serve_react(path):
+    return send_from_directory(app.static_folder, "index.html")
 
 
 if __name__ == "__main__":
