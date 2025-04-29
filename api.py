@@ -2,7 +2,7 @@ import os
 from flask import Flask, jsonify, request, send_from_directory, make_response
 from flask_cors import CORS
 import MySQLdb
-from MySQLdb.cursors import DictCursor  # ✅ Fix for dictionary-style cursor
+from MySQLdb.cursors import DictCursor
 import logging
 import requests
 from datetime import datetime
@@ -14,7 +14,8 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__, static_folder="build", static_url_path="/")  # Updated to serve React app
+# 👇 Make sure 'build' is the correct path to your React production build
+app = Flask(__name__, static_folder="build", static_url_path="/")
 CORS(app)
 
 def get_db_connection():
@@ -43,7 +44,6 @@ def get_db_connection():
         logger.error(f"❌ DB Connection Error: {err}")
         return None
 
-
 def get_fresh_telegram_url(file_id):
     if not file_id:
         logger.warning("⚠️  file_id is empty")
@@ -70,11 +70,9 @@ def get_fresh_telegram_url(file_id):
         logger.error(f"❌ Error fetching URL: {e}")
         return None
 
-
 def enhance_movie_data(movie):
     if not movie:
         return None
-
     try:
         video_url = movie.get('video_link')
         if video_url:
@@ -95,17 +93,14 @@ def enhance_movie_data(movie):
         logger.error(f"❌ Error enhancing movie data: {e}")
         return movie
 
-
 @app.route("/", methods=["GET"])
 def index():
     return jsonify({"message": "Welcome to the Movie API"})
-
 
 @app.route('/favicon.ico')
 def favicon():
     return send_from_directory(app.root_path, 'static/favicon.ico',
                                mimetype='image/vnd.microsoft.icon')
-
 
 @app.route("/movies", methods=["GET"])
 def get_movies():
@@ -117,7 +112,7 @@ def get_movies():
         if not conn:
             return jsonify({"success": False, "error": "DB connection failed"}), 500
 
-        cursor = conn.cursor(cursorclass=DictCursor)  # ✅ Fixed
+        cursor = conn.cursor(cursorclass=DictCursor)
 
         query = """
         SELECT m.*, c.name AS category_name
@@ -157,7 +152,6 @@ def get_movies():
         logger.error(f"❌ Error fetching movies: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
-
 @app.route("/movie/<int:movie_id>", methods=["GET"])
 def get_movie(movie_id):
     try:
@@ -165,7 +159,7 @@ def get_movie(movie_id):
         if not conn:
             return jsonify({"success": False, "error": "DB connection failed"}), 500
 
-        cursor = conn.cursor(cursorclass=DictCursor)  # ✅ Fixed
+        cursor = conn.cursor(cursorclass=DictCursor)
 
         query = """
         SELECT m.*, c.name AS category_name
@@ -190,7 +184,6 @@ def get_movie(movie_id):
         logger.error(f"❌ Error fetching movie by ID: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
-
 @app.route("/categories", methods=["GET"])
 def get_categories():
     try:
@@ -198,7 +191,7 @@ def get_categories():
         if not conn:
             return jsonify({"success": False, "error": "DB connection failed"}), 500
 
-        cursor = conn.cursor(cursorclass=DictCursor)  # ✅ Fixed
+        cursor = conn.cursor(cursorclass=DictCursor)
         cursor.execute("SELECT * FROM categories ORDER BY name")
         categories = cursor.fetchall()
         cursor.close()
@@ -211,7 +204,6 @@ def get_categories():
     except Exception as e:
         logger.error(f"❌ Error fetching categories: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
-
 
 @app.route('/stream_video')
 def stream_video():
@@ -242,12 +234,12 @@ def stream_video():
         logger.error(f"Unexpected error in stream_video: {e}")
         return "Internal server error", 500
 
-
-@app.route("/<path:path>")
-@app.route("/<path:path>/")
-def serve_react(path):
-    return send_from_directory(app.static_folder, "index.html")
-
+# ✅ Safe fallback for React frontend
+@app.errorhandler(404)
+def not_found(e):
+    if os.path.exists(os.path.join(app.static_folder, "index.html")):
+        return send_from_directory(app.static_folder, "index.html")
+    return jsonify({"error": "Not found"}), 404
 
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
