@@ -1,5 +1,8 @@
-import { useState, useEffect } from "react";
-import Navbar from "./Nav";
+import React, { useState, useEffect } from "react";
+import Navbar from "./Nav"; // Assuming this is a local file
+import { motion, AnimatePresence } from 'framer-motion';
+
+const API_BASE_URL = "https://djmoviestore-backend.onrender.com"; // Your Render backend URL
 
 const HeroBanner = ({ featuredMovie, onPlay }) => {
   if (!featuredMovie) return null;
@@ -36,50 +39,108 @@ const HeroBanner = ({ featuredMovie, onPlay }) => {
   );
 };
 
+const MovieCard = ({ movie, onMovieClick }) => {
+    return (
+        <motion.div
+            layout
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+            transition={{ duration: 0.3 }}
+            className="cursor-pointer transform hover:scale-105 transition-transform duration-300"
+            onClick={() => onMovieClick(movie)}
+        >
+            <div className="relative rounded-lg overflow-hidden shadow-lg aspect-[2/3]">
+                <img
+                    src={movie.poster_url || '/default-poster.jpg'} // Fallback image
+                    alt={movie.title}
+                    className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 bg-black bg-opacity-0 hover:bg-opacity-50 flex items-center justify-center transition-opacity duration-300">
+                    <div className="opacity-0 hover:opacity-100 transition-opacity duration-300">
+                        <div className="p-2 bg-red-600 rounded-full">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <h3 className="mt-2 text-gray-200 font-medium truncate">{movie.title}</h3>
+            {movie.category_name && (
+                <p className="text-gray-400 text-sm">{movie.category_name}</p>
+            )}
+        </motion.div>
+    );
+};
+
 const MovieCategory = ({ title, movies, onMovieClick }) => {
   return (
     <div className="mb-12">
       <h2 className="text-2xl font-bold mb-6 text-white flex items-center">
         {title}
         <span className="ml-2 text-sm font-normal text-gray-400">
-          {movies.length} movies
+          {movies.length} {movies.length === 1 ? 'movie' : 'movies'}
         </span>
       </h2>
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
-        {movies.map((movie) => (
-          <div
-            key={movie.id}
-            className="cursor-pointer transform hover:scale-105 transition-transform duration-300"
-            onClick={() => onMovieClick(movie)}
-          >
-            <div className="relative rounded-lg overflow-hidden shadow-lg aspect-[2/3]">
-              <img
-                src={movie.poster_url || '/default-poster.jpg'}
-                alt={movie.title}
-                className="w-full h-full object-cover"
-              />
-              <div className="absolute inset-0 bg-black bg-opacity-0 hover:bg-opacity-50 flex items-center justify-center transition-opacity duration-300">
-                <div className="opacity-0 hover:opacity-100 transition-opacity duration-300">
-                  <div className="p-2 bg-red-600 rounded-full">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <h3 className="mt-2 text-gray-200 font-medium truncate">{movie.title}</h3>
-            {movie.category_name && (
-              <p className="text-gray-400 text-sm">{movie.category_name}</p>
-            )}
-          </div>
-        ))}
+        <AnimatePresence>
+          {movies.map((movie) => (
+            <MovieCard key={movie.id} movie={movie} onMovieClick={onMovieClick} />
+          ))}
+        </AnimatePresence>
       </div>
     </div>
   );
 };
 
+const MoviePlayer = ({ movie, onClose }) => {
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex justify-center items-center">
+            <motion.div
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                transition={{ duration: 0.3 }}
+                className="bg-[#121212] p-8 rounded-lg max-w-4xl w-full"
+            >
+                <div className="flex justify-between items-start mb-4">
+                    <h3 className="text-xl font-semibold text-white">{movie.title}</h3>
+                    <button
+                        onClick={onClose}
+                        className="text-white bg-gray-600 rounded-full p-2 hover:bg-gray-500"
+                    >
+                        Close
+                    </button>
+                </div>
+                <div className="aspect-video w-full bg-black rounded-md overflow-hidden">
+                    {movie.video_url ? (
+                        <video
+                            controls
+                            autoPlay
+                            className="w-full h-full"
+                            src={movie.video_url}
+                        >
+                            Your browser does not support the video tag.
+                        </video>
+                    ) : (
+                        <div className="flex items-center justify-center h-full text-gray-400">
+                            No video available
+                        </div>
+                    )}
+                </div>
+                <div className="mt-4">
+                    {movie.category_name && (
+                        <span className="inline-block bg-red-600 text-white text-sm px-2 py-1 rounded">
+                            {movie.category_name}
+                        </span>
+                    )}
+                </div>
+            </motion.div>
+        </div>
+    );
+};
 export default function MovieApp() {
   const [movies, setMovies] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -97,11 +158,11 @@ export default function MovieApp() {
       setIsLoading(true);
       try {
         // Fetch movies
-        const moviesResponse = await fetch("http://localhost:5000/movies");
+        const moviesResponse = await fetch(`${API_BASE_URL}/movies`);
         const moviesData = await moviesResponse.json();
 
         // Fetch categories
-        const categoriesResponse = await fetch("http://localhost:5000/categories");
+        const categoriesResponse = await fetch(`${API_BASE_URL}/categories`);
         const categoriesData = await categoriesResponse.json();
 
         if (moviesData.success && categoriesData.success) {
@@ -114,6 +175,8 @@ export default function MovieApp() {
               moviesData.data[Math.floor(Math.random() * moviesData.data.length)]
             );
           }
+        } else {
+          console.error("Failed to fetch data:", moviesData, categoriesData);
         }
       } catch (error) {
         console.error("Error fetching data:", error);
@@ -130,7 +193,7 @@ export default function MovieApp() {
     const filterMovies = async () => {
       setIsLoading(true);
       try {
-        let url = "http://localhost:5000/movies";
+        let url = `${API_BASE_URL}/movies`;
         const params = new URLSearchParams();
 
         if (searchQuery) {
@@ -150,6 +213,8 @@ export default function MovieApp() {
 
         if (data.success) {
           setFilteredMovies(data.data);
+        } else {
+          console.error("Failed to filter movies:", data);
         }
       } catch (error) {
         console.error("Error filtering movies:", error);
@@ -242,40 +307,11 @@ export default function MovieApp() {
         />
       </div>
 
-      {isPlaying && selectedMovie && (
-        <div className="fixed inset-0 bg-black bg-opacity-70 z-50">
-          <div className="flex justify-center items-center h-full">
-            <div className="bg-[#121212] p-8 rounded-lg max-w-4xl w-full">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-xl font-semibold text-white">{selectedMovie.title}</h3>
-                <button
-                  onClick={closePlayer}
-                  className="text-white bg-gray-600 rounded-full p-2 hover:bg-gray-500"
-                >
-                  Close
-                </button>
-              </div>
-              <div className="aspect-video w-full bg-black">
-                <video
-                  controls
-                  autoPlay
-                  className="w-full h-full"
-                  src={selectedMovie.video_url}
-                >
-                  Your browser does not support the video tag.
-                </video>
-              </div>
-              <div className="mt-4">
-                {selectedMovie.category_name && (
-                  <span className="inline-block bg-red-600 text-white text-sm px-2 py-1 rounded">
-                    {selectedMovie.category_name}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <AnimatePresence>
+        {isPlaying && selectedMovie && (
+          <MoviePlayer movie={selectedMovie} onClose={closePlayer} />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
