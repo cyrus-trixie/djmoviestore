@@ -1,0 +1,7 @@
+Flask
+Flask-CORS
+requests
+mysqlclient
+aiogram
+mysql-connector-python
+gunicorn  # If you plan to use Gunicorn as your WSGI server on Render

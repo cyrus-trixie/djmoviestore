@@ -1,3 +1,4 @@
+import os
 import mysql.connector
 import logging
 import requests
@@ -19,21 +20,44 @@ bot = Bot(token=TOKEN)
 dp = Dispatcher()
 router = Router()
 
-# Connect to MySQL (updated to use djmovie database)
-try:
-    db = mysql.connector.connect(
-        host="localhost",
-        user="root",
-        password="",
-        database="djmovie"  # Changed to your new database
-    )
-    cursor = db.cursor()
-    logging.info("✅ Connected to MySQL database successfully.")
-except mysql.connector.Error as err:
-    logging.error(f"❌ Database connection failed: {err}")
+# Function to establish MySQL connection using environment variables
+def get_db_connection():
+    """Establish and return a MySQL database connection using environment variables."""
+    db_host = os.environ.get("DB_HOST")
+    db_port = os.environ.get("DB_PORT")
+    db_user = os.environ.get("DB_USER")
+    db_password = os.environ.get("DB_PASSWORD")
+    db_name = os.environ.get("DB_NAME")
+
+    if not all([db_host, db_port, db_user, db_password, db_name]):
+        logging.error("❌ One or more database environment variables are not set for bot.")
+        return None
+
+    try:
+        connection = mysql.connector.connect(
+            host=db_host,
+            port=int(db_port),
+            user=db_user,
+            password=db_password,
+            database=db_name,
+            autocommit=True,
+            charset='utf8mb4'  # Recommended charset
+        )
+        return connection
+    except mysql.connector.Error as err:
+        logging.error(f"❌ Database connection failed for bot: {err}")
+        return None
+
+# Get database connection (call the function)
+db_connection = get_db_connection()
+if db_connection:
+    cursor = db_connection.cursor()
+    logging.info("✅ Bot connected to MySQL database successfully.")
+else:
+    logging.error("❌ Bot failed to connect to MySQL database.")
     exit()
 
-# States for category selection
+# States for category selection (remain the same)
 class MovieStates(StatesGroup):
     waiting_for_video_link = State()  # New state for video link
     waiting_for_title = State()  # New state for movie title
@@ -62,11 +86,11 @@ def save_movie(title, video_link, poster_file_id, chat_id, category_id=None):
             values = (title, video_link, poster_file_id, chat_id, category_id)
             cursor.execute(sql, values)
 
-        db.commit()
-        logging.info(f"✅ Movie '{title}' saved with category {category_id}")
+        db_connection.commit()
+        logging.info(f"✅ Bot saved movie '{title}' with category {category_id}")
         return True
     except Exception as e:
-        logging.error(f"❌ Error saving movie: {e}")
+        logging.error(f"❌ Error saving movie from bot: {e}")
         return False
 
 @router.message(Command("start"))

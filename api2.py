@@ -1,7 +1,6 @@
-import os
 from flask import Flask, jsonify, request, send_file, make_response
 from flask_cors import CORS, cross_origin
-import MySQLdb  # Changed import
+import mysql.connector
 import logging
 import requests
 from datetime import datetime
@@ -18,29 +17,17 @@ CORS(app)
 TELEGRAM_TOKEN = "7413982607:AAG09tBv0Pu2hJvetybPxi4WceSJnT4sJ9o" # Replace with your actual token
 
 def get_db_connection():
-    """Establish and return a MySQL database connection using environment variables."""
-    db_host = os.environ.get("DB_HOST")
-    db_port = os.environ.get("DB_PORT")
-    db_user = os.environ.get("DB_USER")
-    db_password = os.environ.get("DB_PASSWORD")
-    db_name = os.environ.get("DB_NAME")
-
-    if not all([db_host, db_port, db_user, db_password, db_name]):
-        logger.error("❌ One or more database environment variables are not set.")
-        return None
-
+    """Establish and return a MySQL database connection."""
     try:
-        connection = MySQLdb.connect(
-            host=db_host,
-            port=int(db_port),
-            user=db_user,
-            passwd=db_password,
-            db=db_name,
-            autocommit=True,
-            charset='utf8mb4' # Recommended charset
+        connection = mysql.connector.connect(
+            host="localhost",
+            user="root",
+            password="",
+            database="djmovie",
+            autocommit=True
         )
         return connection
-    except MySQLdb.Error as err:
+    except mysql.connector.Error as err:
         logger.error(f"❌ DB Connection Error: {err}")
         return None
 
