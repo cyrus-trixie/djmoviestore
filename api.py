@@ -1,16 +1,17 @@
-import pymysql
-pymysql.install_as_MySQLdb()  # Monkey patch BEFORE importing MySQLdb
-
 import os
-from flask import Flask, jsonify, request, send_from_directory, make_response
-from flask_cors import CORS
-import MySQLdb
-from MySQLdb.cursors import DictCursor
 import logging
-import requests
 from datetime import datetime
 from urllib.parse import unquote
+
+from flask import Flask, jsonify, request, send_from_directory, make_response
+from flask_cors import CORS
+import pymysql
+from pymysql.cursors import DictCursor
+import requests
 from dotenv import load_dotenv
+
+# Monkey patch BEFORE doing anything else
+pymysql.install_as_MySQLdb()
 
 # Load environment variables
 load_dotenv()
@@ -36,17 +37,18 @@ def get_db_connection():
         return None
 
     try:
-        connection = MySQLdb.connect(
+        connection = pymysql.connect(
             host=db_host,
             port=int(db_port),
             user=db_user,
-            passwd=db_password,
-            db=db_name,
+            password=db_password,
+            database=db_name,
             autocommit=True,
-            charset='utf8mb4'
+            charset='utf8mb4',
+            cursorclass=DictCursor
         )
         return connection
-    except MySQLdb.Error as err:
+    except pymysql.MySQLError as err:
         logger.error(f"❌ DB Connection Error: {err}")
         return None
 
@@ -84,28 +86,25 @@ def enhance_movie_data(movie):
         return None
     try:
         video_url = movie.get('video_link')
-        if video_url:
-            movie['video_url'] = video_url if video_url.startswith('http') else get_fresh_telegram_url(video_url)
-        else:
-            movie['video_url'] = None
-
-        movie['poster_url'] = get_fresh_telegram_url(movie.get('poster_file_id')) if movie.get('poster_file_id') else None
+        movie['video_url'] = (
+            video_url if video_url and video_url.startswith('http') else get_fresh_telegram_url(video_url)
+        )
+        movie['poster_url'] = (
+            get_fresh_telegram_url(movie.get('poster_file_id')) if movie.get('poster_file_id') else None
+        )
         return movie
     except Exception as e:
         logger.error(f"❌ Error enhancing movie data: {e}")
         return movie
 
-# Welcome route
 @app.route("/", methods=["GET"])
 def index():
     return jsonify({"message": "Welcome to the Movie API"})
 
-# Favicon route
 @app.route('/favicon.ico')
 def favicon():
     return send_from_directory(app.root_path, 'static/favicon.ico', mimetype='image/vnd.microsoft.icon')
 
-# Get all movies
 @app.route("/movies", methods=["GET"])
 def get_movies():
     try:
@@ -117,50 +116,40 @@ def get_movies():
         if not conn:
             return jsonify({"success": False, "error": "DB connection failed"}), 500
 
-        cursor = conn.cursor(cursorclass=DictCursor)
+        with conn.cursor() as cursor:
+            query = """
+            SELECT m.*, c.name AS category_name, d.name AS dj_name, d.id AS dj_id
+            FROM movies m
+            LEFT JOIN categories c ON m.category_id = c.id
+            LEFT JOIN djs d ON m.dj_id = d.id
+            WHERE 1=1
+            """
+            params = []
+            if search:
+                query += " AND m.title LIKE %s"
+                params.append(f"%{search}%")
+            if category_id:
+                query += " AND m.category_id = %s"
+                params.append(category_id)
+            if dj_id:
+                query += " AND m.dj_id = %s"
+                params.append(dj_id)
 
-        query = """
-        SELECT m.*, c.name AS category_name, d.name AS dj_name, d.id AS dj_id
-        FROM movies m
-        LEFT JOIN categories c ON m.category_id = c.id
-        LEFT JOIN djs d ON m.dj_id = d.id
-        WHERE 1=1
-        """
-        params = []
-
-        if search:
-            query += " AND m.title LIKE %s"
-            params.append(f"%{search}%")
-        if category_id:
-            query += " AND m.category_id = %s"
-            params.append(category_id)
-        if dj_id:
-            query += " AND m.dj_id = %s"
-            params.append(dj_id)
-
-        query += " ORDER BY m.created_at DESC"
-
-        cursor.execute(query, tuple(params))
-        rows = cursor.fetchall()
-        cursor.close()
-        conn.close()
+            query += " ORDER BY m.created_at DESC"
+            cursor.execute(query, tuple(params))
+            rows = cursor.fetchall()
 
         movies = [enhance_movie_data(movie) for movie in rows]
-
         return jsonify({
             "success": True,
             "count": len(movies),
             "data": movies,
             "generated_at": datetime.now().isoformat()
         })
-    except MySQLdb.Error as db_err:
-        logger.error(f"❌ Database error fetching movies: {db_err}")
-        return jsonify({"success": False, "error": str(db_err)}), 500
     except Exception as e:
         logger.error(f"❌ Error fetching movies: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
-# Get a single movie by ID
 @app.route("/movie/<int:movie_id>", methods=["GET"])
 def get_movie(movie_id):
     try:
@@ -168,17 +157,15 @@ def get_movie(movie_id):
         if not conn:
             return jsonify({"success": False, "error": "DB connection failed"}), 500
 
-        cursor = conn.cursor(cursorclass=DictCursor)
-        cursor.execute("""
-        SELECT m.*, c.name AS category_name, d.name AS dj_name, d.id AS dj_id
-        FROM movies m
-        LEFT JOIN categories c ON m.category_id = c.id
-        LEFT JOIN djs d ON m.dj_id = d.id
-        WHERE m.id = %s
-        """, (movie_id,))
-        movie = cursor.fetchone()
-        cursor.close()
-        conn.close()
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                SELECT m.*, c.name AS category_name, d.name AS dj_name, d.id AS dj_id
+                FROM movies m
+                LEFT JOIN categories c ON m.category_id = c.id
+                LEFT JOIN djs d ON m.dj_id = d.id
+                WHERE m.id = %s
+            """, (movie_id,))
+            movie = cursor.fetchone()
 
         if movie:
             return jsonify({"success": True, "data": enhance_movie_data(movie)})
@@ -188,7 +175,6 @@ def get_movie(movie_id):
         logger.error(f"❌ Error fetching movie by ID: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
-# Get all categories
 @app.route("/categories", methods=["GET"])
 def get_categories():
     try:
@@ -196,18 +182,15 @@ def get_categories():
         if not conn:
             return jsonify({"success": False, "error": "DB connection failed"}), 500
 
-        cursor = conn.cursor(cursorclass=DictCursor)
-        cursor.execute("SELECT * FROM categories ORDER BY name")
-        categories = cursor.fetchall()
-        cursor.close()
-        conn.close()
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT * FROM categories ORDER BY name")
+            categories = cursor.fetchall()
 
         return jsonify({"success": True, "data": categories})
     except Exception as e:
         logger.error(f"❌ Error fetching categories: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
-# Get all DJs
 @app.route("/djs", methods=["GET"])
 def get_djs():
     try:
@@ -215,18 +198,15 @@ def get_djs():
         if not conn:
             return jsonify({"success": False, "error": "DB connection failed"}), 500
 
-        cursor = conn.cursor(cursorclass=DictCursor)
-        cursor.execute("SELECT * FROM djs ORDER BY name")
-        djs = cursor.fetchall()
-        cursor.close()
-        conn.close()
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT * FROM djs ORDER BY name")
+            djs = cursor.fetchall()
 
         return jsonify({"success": True, "data": djs})
     except Exception as e:
         logger.error(f"❌ Error fetching DJs: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
-# Stream video through proxy
 @app.route('/stream_video')
 def stream_video():
     video_url = request.args.get('url')
@@ -249,19 +229,7 @@ def stream_video():
             return resp
         else:
             logger.error(f"Error fetching video from source: {response.status_code} - {response.text}")
-            return f"Error fetching video from source: {response.status_code}", response.status_code
+            return f"Failed to fetch video. Status: {response.status_code}", 500
     except Exception as e:
-        logger.error(f"Error during video stream proxy: {e}")
-        return "Internal server error", 500
-
-# Fallback to React app for unknown routes
-@app.errorhandler(404)
-def not_found(e):
-    index_path = os.path.join(app.static_folder, "index.html")
-    if os.path.exists(index_path):
-        return send_from_directory(app.static_folder, "index.html")
-    return jsonify({"error": "Not found"}), 404
-
-# Run the Flask app
-if __name__ == "__main__":
-    app.run(debug=False, host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+        logger.error(f"❌ Error streaming video: {e}")
+        return f"Internal server error: {e}", 500
