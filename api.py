@@ -1,3 +1,6 @@
+import pymysql
+pymysql.install_as_MySQLdb()  # Monkey patch BEFORE importing MySQLdb
+
 import os
 from flask import Flask, jsonify, request, send_from_directory, make_response
 from flask_cors import CORS
@@ -8,6 +11,7 @@ import requests
 from datetime import datetime
 from urllib.parse import unquote
 from dotenv import load_dotenv
+
 
 load_dotenv()
 
@@ -107,6 +111,7 @@ def get_movies():
     try:
         search = request.args.get("search", "")
         category_id = request.args.get("category_id")
+        dj_id = request.args.get("dj_id")  # Added DJ filter parameter
 
         conn = get_db_connection()
         if not conn:
@@ -115,9 +120,10 @@ def get_movies():
         cursor = conn.cursor(cursorclass=DictCursor)
 
         query = """
-        SELECT m.*, c.name AS category_name
+        SELECT m.*, c.name AS category_name, d.name AS dj_name, d.id AS dj_id
         FROM movies m
         LEFT JOIN categories c ON m.category_id = c.id
+        LEFT JOIN djs d ON m.dj_id = d.id
         WHERE 1=1
         """
         params = []
@@ -129,6 +135,10 @@ def get_movies():
         if category_id:
             query += " AND m.category_id = %s"
             params.append(category_id)
+            
+        if dj_id:
+            query += " AND m.dj_id = %s"
+            params.append(dj_id)
 
         query += " ORDER BY m.created_at DESC"
 
@@ -162,9 +172,10 @@ def get_movie(movie_id):
         cursor = conn.cursor(cursorclass=DictCursor)
 
         query = """
-        SELECT m.*, c.name AS category_name
+        SELECT m.*, c.name AS category_name, d.name AS dj_name, d.id AS dj_id
         FROM movies m
         LEFT JOIN categories c ON m.category_id = c.id
+        LEFT JOIN djs d ON m.dj_id = d.id
         WHERE m.id = %s
         """
         cursor.execute(query, (movie_id,))
@@ -203,6 +214,28 @@ def get_categories():
         return jsonify({"success": False, "error": "Database error: " + str(db_err)}), 500
     except Exception as e:
         logger.error(f"❌ Error fetching categories: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+# New endpoint to get all DJs
+@app.route("/djs", methods=["GET"])
+def get_djs():
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({"success": False, "error": "DB connection failed"}), 500
+
+        cursor = conn.cursor(cursorclass=DictCursor)
+        cursor.execute("SELECT * FROM djs ORDER BY name")
+        djs = cursor.fetchall()
+        cursor.close()
+        conn.close()
+
+        return jsonify({"success": True, "data": djs})
+    except MySQLdb.Error as db_err:
+        logger.error(f"❌ Database error fetching DJs: {db_err}")
+        return jsonify({"success": False, "error": "Database error: " + str(db_err)}), 500
+    except Exception as e:
+        logger.error(f"❌ Error fetching DJs: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/stream_video')

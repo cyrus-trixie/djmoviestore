@@ -11,17 +11,24 @@ const HeroBanner = ({ featuredMovie, onPlay }) => {
       <div className="absolute inset-0 bg-gradient-to-r from-black via-transparent to-transparent z-10"></div>
       <div className="absolute inset-0 bg-gradient-to-t from-[#121212] via-transparent to-transparent z-10"></div>
       <img
-        src={featuredMovie.poster_url}
+        src={featuredMovie.poster_url || '/default-poster.jpg'}
         alt={featuredMovie.title}
         className="absolute inset-0 w-full h-full object-cover"
       />
       <div className="relative z-20 flex flex-col justify-end h-full p-8 max-w-2xl">
         <h1 className="text-4xl font-bold mb-2 text-white drop-shadow-lg">{featuredMovie.title}</h1>
-        {featuredMovie.category_name && (
-          <span className="inline-block bg-red-600 text-white text-sm px-2 py-1 rounded mb-2 self-start">
-            {featuredMovie.category_name}
-          </span>
-        )}
+        <div className="flex flex-wrap items-center gap-2 mb-2">
+          {featuredMovie.category_name && (
+            <span className="inline-block bg-red-600 text-white text-sm px-2 py-1 rounded">
+              {featuredMovie.category_name}
+            </span>
+          )}
+          {featuredMovie.dj_name && (
+            <span className="inline-block bg-purple-600 text-white text-sm px-2 py-1 rounded">
+              DJ {featuredMovie.dj_name}
+            </span>
+          )}
+        </div>
         <div className="flex space-x-4">
           <button
             onClick={() => onPlay(featuredMovie)}
@@ -72,9 +79,14 @@ const MovieCategory = ({ title, movies, onMovieClick }) => {
               </div>
             </div>
             <h3 className="mt-2 text-gray-200 font-medium truncate">{movie.title}</h3>
-            {movie.category_name && (
-              <p className="text-gray-400 text-sm">{movie.category_name}</p>
-            )}
+            <div className="flex flex-wrap gap-2">
+              {movie.category_name && (
+                <p className="text-gray-400 text-sm">{movie.category_name}</p>
+              )}
+              {movie.dj_name && (
+                <p className="text-purple-400 text-sm">DJ {movie.dj_name}</p>
+              )}
+            </div>
           </div>
         ))}
       </div>
@@ -85,15 +97,18 @@ const MovieCategory = ({ title, movies, onMovieClick }) => {
 export default function MovieApp() {
   const [movies, setMovies] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [djs, setDjs] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedMovie, setSelectedMovie] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [featuredMovie, setFeaturedMovie] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState(null);
+  const [selectedDJ, setSelectedDJ] = useState(null);
   const [filteredMovies, setFilteredMovies] = useState([]);
+  const [activeFilterTab, setActiveFilterTab] = useState("categories"); // 'categories' or 'djs'
 
-  // Fetch all movies and categories
+  // Fetch all movies, categories and DJs
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
@@ -105,10 +120,16 @@ export default function MovieApp() {
         // Fetch categories
         const categoriesResponse = await fetch(`${API_BASE_URL}/categories`);
         const categoriesData = await categoriesResponse.json();
+        
+        // Fetch DJs
+        const djsResponse = await fetch(`${API_BASE_URL}/djs`);
+        const djsData = await djsResponse.json();
 
-        if (moviesData.success && categoriesData.success) {
+        if (moviesData.success && categoriesData.success && djsData.success) {
           setMovies(moviesData.data);
+          setFilteredMovies(moviesData.data);
           setCategories(categoriesData.data);
+          setDjs(djsData.data);
 
           // Set featured movie (random from the list)
           if (moviesData.data.length > 0) {
@@ -127,7 +148,7 @@ export default function MovieApp() {
     fetchData();
   }, []);
 
-  // Filter movies when category or search changes
+  // Filter movies when category, DJ, or search changes
   useEffect(() => {
     const filterMovies = async () => {
       setIsLoading(true);
@@ -141,6 +162,10 @@ export default function MovieApp() {
 
         if (selectedCategory) {
           params.append("category_id", selectedCategory);
+        }
+        
+        if (selectedDJ) {
+          params.append("dj_id", selectedDJ);
         }
 
         if (params.toString()) {
@@ -160,8 +185,10 @@ export default function MovieApp() {
       }
     };
 
-    filterMovies();
-  }, [searchQuery, selectedCategory]);
+    if (movies.length > 0) {
+      filterMovies();
+    }
+  }, [searchQuery, selectedCategory, selectedDJ, movies]);
 
   const playMovie = (movie) => {
     setSelectedMovie(movie);
@@ -176,6 +203,20 @@ export default function MovieApp() {
   const handleSearch = (e) => {
     e.preventDefault();
     // The useEffect will handle the search automatically
+  };
+
+  const getFilterTitle = () => {
+    if (selectedDJ) {
+      const dj = djs.find(dj => dj.id === selectedDJ);
+      return `DJ ${dj?.name || ""}`;
+    }
+    
+    if (selectedCategory) {
+      const category = categories.find(c => c.id === selectedCategory);
+      return category?.name || "Category";
+    }
+    
+    return "All Movies";
   };
 
   if (isLoading && movies.length === 0) {
@@ -208,37 +249,91 @@ export default function MovieApp() {
             </button>
           </form>
 
-          <div className="flex space-x-4 mt-4 overflow-x-auto pb-2 scrollbar-hide">
-            <button
-              onClick={() => setSelectedCategory(null)}
-              className={`px-4 py-1 rounded-full whitespace-nowrap ${
-                selectedCategory === null ? "bg-red-600" : "bg-gray-700 hover:bg-gray-600"
-              }`}
-            >
-              All Movies
-            </button>
-            {categories.map((category) => (
+          <div className="flex justify-between mt-4 border-b border-gray-700 pb-2">
+            <div className="flex space-x-4">
               <button
-                key={category.id}
-                onClick={() => setSelectedCategory(category.id)}
-                className={`px-4 py-1 rounded-full whitespace-nowrap ${
-                  selectedCategory === category.id ? "bg-red-600" : "bg-gray-700 hover:bg-gray-600"
+                onClick={() => setActiveFilterTab("categories")}
+                className={`px-4 py-1 rounded-t-lg ${
+                  activeFilterTab === "categories" ? "bg-gray-800 border-b-2 border-red-600" : "bg-transparent"
                 }`}
               >
-                {category.name}
+                Categories
               </button>
-            ))}
+              <button
+                onClick={() => setActiveFilterTab("djs")}
+                className={`px-4 py-1 rounded-t-lg ${
+                  activeFilterTab === "djs" ? "bg-gray-800 border-b-2 border-purple-600" : "bg-transparent"
+                }`}
+              >
+                DJs
+              </button>
+            </div>
+            <button
+              onClick={() => {
+                setSelectedCategory(null);
+                setSelectedDJ(null);
+              }}
+              className="text-sm text-gray-400 hover:text-white"
+            >
+              Clear Filters
+            </button>
           </div>
+
+          {activeFilterTab === "categories" && (
+            <div className="flex space-x-4 mt-4 overflow-x-auto pb-2 scrollbar-hide">
+              <button
+                onClick={() => setSelectedCategory(null)}
+                className={`px-4 py-1 rounded-full whitespace-nowrap ${
+                  selectedCategory === null ? "bg-red-600" : "bg-gray-700 hover:bg-gray-600"
+                }`}
+              >
+                All Categories
+              </button>
+              {categories.map((category) => (
+                <button
+                  key={category.id}
+                  onClick={() => setSelectedCategory(category.id)}
+                  className={`px-4 py-1 rounded-full whitespace-nowrap ${
+                    selectedCategory === category.id ? "bg-red-600" : "bg-gray-700 hover:bg-gray-600"
+                  }`}
+                >
+                  {category.name}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {activeFilterTab === "djs" && (
+            <div className="flex space-x-4 mt-4 overflow-x-auto pb-2 scrollbar-hide">
+              <button
+                onClick={() => setSelectedDJ(null)}
+                className={`px-4 py-1 rounded-full whitespace-nowrap ${
+                  selectedDJ === null ? "bg-purple-600" : "bg-gray-700 hover:bg-gray-600"
+                }`}
+              >
+                All DJs
+              </button>
+              {djs.map((dj) => (
+                <button
+                  key={dj.id}
+                  onClick={() => setSelectedDJ(dj.id)}
+                  className={`px-4 py-1 rounded-full whitespace-nowrap ${
+                    selectedDJ === dj.id ? "bg-purple-600" : "bg-gray-700 hover:bg-gray-600"
+                  }`}
+                >
+                  DJ {dj.name}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
-      {featuredMovie && <HeroBanner featuredMovie={featuredMovie} onPlay={playMovie} />}
+      {!selectedDJ && !selectedCategory && featuredMovie && <HeroBanner featuredMovie={featuredMovie} onPlay={playMovie} />}
 
       <div className="px-6 py-8 max-w-screen-xl mx-auto">
         <MovieCategory
-          title={selectedCategory
-            ? categories.find(c => c.id === selectedCategory)?.name || "Category"
-            : "All Movies"}
+          title={getFilterTitle()}
           movies={filteredMovies}
           onMovieClick={playMovie}
         />
@@ -254,7 +349,9 @@ export default function MovieApp() {
                   onClick={closePlayer}
                   className="text-white bg-gray-600 rounded-full p-2 hover:bg-gray-500"
                 >
-                  Close
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
                 </button>
               </div>
               <div className="aspect-video w-full bg-black">
@@ -267,10 +364,15 @@ export default function MovieApp() {
                   Your browser does not support the video tag.
                 </video>
               </div>
-              <div className="mt-4">
+              <div className="mt-4 flex flex-wrap gap-2">
                 {selectedMovie.category_name && (
                   <span className="inline-block bg-red-600 text-white text-sm px-2 py-1 rounded">
                     {selectedMovie.category_name}
+                  </span>
+                )}
+                {selectedMovie.dj_name && (
+                  <span className="inline-block bg-purple-600 text-white text-sm px-2 py-1 rounded">
+                    DJ {selectedMovie.dj_name}
                   </span>
                 )}
               </div>
