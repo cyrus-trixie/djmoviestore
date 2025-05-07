@@ -5,4 +5,5 @@ mysqlclient
 aiogram
 mysql-connector-python
 python-dotenv>=0.21.0
+pymysql
 gunicorn  # If you plan to use Gunicorn as your WSGI server on Render
