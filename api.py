@@ -12,16 +12,18 @@ from datetime import datetime
 from urllib.parse import unquote
 from dotenv import load_dotenv
 
-
+# Load environment variables
 load_dotenv()
 
+# Logger configuration
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# 👇 Make sure 'build' is the correct path to your React production build
+# Create Flask app
 app = Flask(__name__, static_folder="build", static_url_path="/")
 CORS(app)
 
+# Database connection
 def get_db_connection():
     db_host = os.environ.get("DB_HOST")
     db_port = os.environ.get("DB_PORT")
@@ -48,9 +50,10 @@ def get_db_connection():
         logger.error(f"❌ DB Connection Error: {err}")
         return None
 
+# Telegram file URL retrieval
 def get_fresh_telegram_url(file_id):
     if not file_id:
-        logger.warning("⚠️  file_id is empty")
+        logger.warning("⚠️ file_id is empty")
         return None
 
     try:
@@ -58,6 +61,7 @@ def get_fresh_telegram_url(file_id):
         if not telegram_token:
             logger.error("❌ TELEGRAM_TOKEN environment variable is not set.")
             return None
+
         url = f"https://api.telegram.org/bot{telegram_token}/getFile?file_id={file_id}"
         response = requests.get(url)
 
@@ -65,7 +69,7 @@ def get_fresh_telegram_url(file_id):
             file_path = response.json()["result"]["file_path"]
             return f"https://api.telegram.org/file/bot{telegram_token}/{file_path}"
         elif response.status_code == 404:
-            logger.warning(f"⚠️  File not found on Telegram: file_id={file_id}")
+            logger.warning(f"⚠️ File not found on Telegram: file_id={file_id}")
             return None
         else:
             logger.error(f"❌ Telegram API error: {response.status_code}, {response.text}")
@@ -74,44 +78,40 @@ def get_fresh_telegram_url(file_id):
         logger.error(f"❌ Error fetching URL: {e}")
         return None
 
+# Enhance movie data with media URLs
 def enhance_movie_data(movie):
     if not movie:
         return None
     try:
         video_url = movie.get('video_link')
         if video_url:
-            if video_url.startswith('http'):
-                movie['video_url'] = video_url
-            else:
-                movie['video_url'] = get_fresh_telegram_url(video_url)
+            movie['video_url'] = video_url if video_url.startswith('http') else get_fresh_telegram_url(video_url)
         else:
             movie['video_url'] = None
 
-        if movie.get('poster_file_id'):
-            movie['poster_url'] = get_fresh_telegram_url(movie['poster_file_id'])
-        else:
-            movie['poster_url'] = None
-
+        movie['poster_url'] = get_fresh_telegram_url(movie.get('poster_file_id')) if movie.get('poster_file_id') else None
         return movie
     except Exception as e:
         logger.error(f"❌ Error enhancing movie data: {e}")
         return movie
 
+# Welcome route
 @app.route("/", methods=["GET"])
 def index():
     return jsonify({"message": "Welcome to the Movie API"})
 
+# Favicon route
 @app.route('/favicon.ico')
 def favicon():
-    return send_from_directory(app.root_path, 'static/favicon.ico',
-                               mimetype='image/vnd.microsoft.icon')
+    return send_from_directory(app.root_path, 'static/favicon.ico', mimetype='image/vnd.microsoft.icon')
 
+# Get all movies
 @app.route("/movies", methods=["GET"])
 def get_movies():
     try:
         search = request.args.get("search", "")
         category_id = request.args.get("category_id")
-        dj_id = request.args.get("dj_id")  # Added DJ filter parameter
+        dj_id = request.args.get("dj_id")
 
         conn = get_db_connection()
         if not conn:
@@ -131,11 +131,9 @@ def get_movies():
         if search:
             query += " AND m.title LIKE %s"
             params.append(f"%{search}%")
-
         if category_id:
             query += " AND m.category_id = %s"
             params.append(category_id)
-            
         if dj_id:
             query += " AND m.dj_id = %s"
             params.append(dj_id)
@@ -157,11 +155,12 @@ def get_movies():
         })
     except MySQLdb.Error as db_err:
         logger.error(f"❌ Database error fetching movies: {db_err}")
-        return jsonify({"success": False, "error": "Database error: " + str(db_err)}), 500
+        return jsonify({"success": False, "error": str(db_err)}), 500
     except Exception as e:
         logger.error(f"❌ Error fetching movies: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
+# Get a single movie by ID
 @app.route("/movie/<int:movie_id>", methods=["GET"])
 def get_movie(movie_id):
     try:
@@ -170,17 +169,14 @@ def get_movie(movie_id):
             return jsonify({"success": False, "error": "DB connection failed"}), 500
 
         cursor = conn.cursor(cursorclass=DictCursor)
-
-        query = """
+        cursor.execute("""
         SELECT m.*, c.name AS category_name, d.name AS dj_name, d.id AS dj_id
         FROM movies m
         LEFT JOIN categories c ON m.category_id = c.id
         LEFT JOIN djs d ON m.dj_id = d.id
         WHERE m.id = %s
-        """
-        cursor.execute(query, (movie_id,))
+        """, (movie_id,))
         movie = cursor.fetchone()
-
         cursor.close()
         conn.close()
 
@@ -188,13 +184,11 @@ def get_movie(movie_id):
             return jsonify({"success": True, "data": enhance_movie_data(movie)})
         else:
             return jsonify({"success": False, "error": "Movie not found"}), 404
-    except MySQLdb.Error as db_err:
-        logger.error(f"❌ Database error fetching movie: {db_err}")
-        return jsonify({"success": False, "error": "Database error: " + str(db_err)}), 500
     except Exception as e:
         logger.error(f"❌ Error fetching movie by ID: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
+# Get all categories
 @app.route("/categories", methods=["GET"])
 def get_categories():
     try:
@@ -209,14 +203,11 @@ def get_categories():
         conn.close()
 
         return jsonify({"success": True, "data": categories})
-    except MySQLdb.Error as db_err:
-        logger.error(f"❌ Database error fetching categories: {db_err}")
-        return jsonify({"success": False, "error": "Database error: " + str(db_err)}), 500
     except Exception as e:
         logger.error(f"❌ Error fetching categories: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
-# New endpoint to get all DJs
+# Get all DJs
 @app.route("/djs", methods=["GET"])
 def get_djs():
     try:
@@ -231,48 +222,46 @@ def get_djs():
         conn.close()
 
         return jsonify({"success": True, "data": djs})
-    except MySQLdb.Error as db_err:
-        logger.error(f"❌ Database error fetching DJs: {db_err}")
-        return jsonify({"success": False, "error": "Database error: " + str(db_err)}), 500
     except Exception as e:
         logger.error(f"❌ Error fetching DJs: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
+# Stream video through proxy
 @app.route('/stream_video')
 def stream_video():
     video_url = request.args.get('url')
     if not video_url:
         return "Video URL is required", 400
+
     logger.info(f"Attempting to stream video from: {video_url}")
     try:
         video_url = unquote(video_url)
         response = requests.get(video_url, stream=True, timeout=10)
+
         if response.status_code == 200:
             def generate():
                 for chunk in response.iter_content(chunk_size=4096):
                     yield chunk
 
-            resp = make_response(app.response_class(generate(),
-                                                   content_type=response.headers.get('Content-Type')))
+            resp = make_response(app.response_class(generate(), content_type=response.headers.get('Content-Type')))
             resp.headers['Access-Control-Allow-Origin'] = '*'
             resp.headers['Cache-Control'] = 'public, max-age=31536000'
             return resp
         else:
             logger.error(f"Error fetching video from source: {response.status_code} - {response.text}")
             return f"Error fetching video from source: {response.status_code}", response.status_code
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Error during video stream proxy: {e}")
-        return f"Error during video stream proxy: {e}", 500
     except Exception as e:
-        logger.error(f"Unexpected error in stream_video: {e}")
+        logger.error(f"Error during video stream proxy: {e}")
         return "Internal server error", 500
 
-# ✅ Safe fallback for React frontend
+# Fallback to React app for unknown routes
 @app.errorhandler(404)
 def not_found(e):
-    if os.path.exists(os.path.join(app.static_folder, "index.html")):
+    index_path = os.path.join(app.static_folder, "index.html")
+    if os.path.exists(index_path):
         return send_from_directory(app.static_folder, "index.html")
     return jsonify({"error": "Not found"}), 404
 
+# Run the Flask app
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
